@@ -46,50 +46,49 @@ func combineExcelFiles(inputDir string, outputFile string, keywords []string, ke
 			return err
 		}
 
-		for _, sheetName := range inFile.GetSheetList() {
-			// Get the rows from the input sheet
-			rows, err := inFile.GetRows(sheetName)
-			if err != nil {
-				return err
-			}
+		sheetName := inFile.GetSheetList()[0]
+		// Get the rows from the input sheet
+		rows, err := inFile.GetRows(sheetName)
+		if err != nil {
+			return err
+		}
 
-			if keywordRow < 1 || keywordRow > len(rows) {
-				return fmt.Errorf("keywordRow %d is out of range", keywordRow)
-			}
+		if keywordRow < 1 || keywordRow > len(rows) {
+			return fmt.Errorf("keywordRow %d is out of range", keywordRow)
+		}
 
-			// Identify columns to copy based on keywords
-			keywordRowCells := rows[keywordRow-1]
-			columnsToCopy := make(map[int]bool)
+		// Identify columns to copy based on keywords
+		keywordRowCells := rows[keywordRow-1]
+		columnsToCopy := make(map[int]bool)
 
-			for colIndex, cellValue := range keywordRowCells {
-				for _, keyword := range keywords {
-					if strings.Contains(cellValue, keyword) {
-						columnsToCopy[colIndex] = true
-						if _, exists := headerMap[colIndex]; !exists {
-							headerMap[colIndex] = cellValue
-							keywordOrder = append(keywordOrder, colIndex)
-						}
+		for colIndex, cellValue := range keywordRowCells {
+			for _, keyword := range keywords {
+				if strings.Contains(cellValue, keyword) {
+					columnsToCopy[colIndex] = true
+					if _, exists := headerMap[colIndex]; !exists {
+						headerMap[colIndex] = cellValue
+						keywordOrder = append(keywordOrder, colIndex)
 					}
 				}
 			}
+		}
 
-			// Copy relevant rows
-			for i := keywordRow; i < len(rows); i++ {
-				row := rows[i]
+		// Copy relevant rows
+		for i := keywordRow; i < len(rows); i++ {
+			row := rows[i]
 
-				// Skip empty rows
-				if isEmptyRow(row) {
-					continue
-				}
-
-				dataRow := make([]string, len(keywordOrder))
-				for j, colIndex := range keywordOrder {
-					if colIndex < len(row) {
-						dataRow[j] = row[colIndex]
-					}
-				}
-				dataRows = append(dataRows, dataRow)
+			// Skip empty rows
+			if isEmptyRow(row) {
+				continue
 			}
+
+			dataRow := make([]string, len(keywordOrder))
+			for j, colIndex := range keywordOrder {
+				if colIndex < len(row) {
+					dataRow[j] = row[colIndex]
+				}
+			}
+			dataRows = append(dataRows, dataRow)
 		}
 	}
 
