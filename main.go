@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"regexp"
 	"runtime"
 	"strings"
 
@@ -63,7 +64,7 @@ func combineExcelFiles(inputDir string, outputFile string, keywords []string, ke
 
 		for colIndex, cellValue := range keywordRowCells {
 			for _, keyword := range keywords {
-				if strings.Contains(cellValue, keyword) {
+				if containsKeyword(cellValue, keyword) {
 					columnsToCopy[colIndex] = true
 					if _, exists := headerMap[colIndex]; !exists {
 						headerMap[colIndex] = cellValue
@@ -128,6 +129,20 @@ func isEmptyRow(row []string) bool {
 		}
 	}
 	return true
+}
+
+// Helper function to normalize whitespace (replace tabs and newlines with a single space)
+func normalizeWhitespace(s string) string {
+	// Replace all types of whitespace (including tabs and newlines) with a single space
+	re := regexp.MustCompile(`\s+`)
+	return re.ReplaceAllString(s, " ")
+}
+
+// Helper function to check if a value matches any of the keywords
+func containsKeyword(value string, keyword string) bool {
+	normalizedValue := normalizeWhitespace(value)
+	normalizedKeyword := normalizeWhitespace(keyword)
+	return strings.Contains(normalizedValue, normalizedKeyword)
 }
 
 func main() {
