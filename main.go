@@ -4,9 +4,10 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 
-	"github.com/tealeg/xlsx"
+	"github.com/xuri/excelize/v2"
 )
 
 // Function to combine Excel files
@@ -17,18 +18,19 @@ func combineExcelFiles(inputDir string, outputFile string, keywords []string, ke
 	}
 
 	// Create a new Excel file for the output
-	outFile := xlsx.NewFile()
-	outSheet, err := outFile.AddSheet("CombinedData")
-	if err != nil {
-		return err
-	}
+	outFile := excelize.NewFile()
+	defaultSheetName := "Sheet1" // Default sheet name
 
-	// Boolean to track if header row has been written
-	headerWritten := false
+	// Get the default sheet index
+	outSheetIndex, err := outFile.GetSheetIndex(defaultSheetName)
+	if err != nil || outSheetIndex == -1 {
+		return fmt.Errorf("default sheet %s not found", defaultSheetName)
+	}
 
 	// Map to hold the column indices in order based on keywords
 	headerMap := make(map[int]string) // column index to header name
 	keywordOrder := []int{}           // order of columns to be copied
+	dataRows := [][]string{}          // rows to be copied
 
 	for _, file := range files {
 		if file.IsDir() {
@@ -39,23 +41,27 @@ func combineExcelFiles(inputDir string, outputFile string, keywords []string, ke
 		fmt.Printf("Processing file: %s\n", filePath)
 
 		// Open the Excel file
-		inFile, err := xlsx.OpenFile(filePath)
+		inFile, err := excelize.OpenFile(filePath)
 		if err != nil {
 			return err
 		}
 
-		for _, inSheet := range inFile.Sheets {
-			// Check if keywordRow is within bounds
-			if keywordRow < 1 || keywordRow > len(inSheet.Rows) {
+		for _, sheetName := range inFile.GetSheetList() {
+			// Get the rows from the input sheet
+			rows, err := inFile.GetRows(sheetName)
+			if err != nil {
+				return err
+			}
+
+			if keywordRow < 1 || keywordRow > len(rows) {
 				return fmt.Errorf("keywordRow %d is out of range", keywordRow)
 			}
 
 			// Identify columns to copy based on keywords
-			keywordRowCells := inSheet.Rows[keywordRow-1].Cells
+			keywordRowCells := rows[keywordRow-1]
 			columnsToCopy := make(map[int]bool)
 
-			for colIndex, cell := range keywordRowCells {
-				cellValue := cell.String()
+			for colIndex, cellValue := range keywordRowCells {
 				for _, keyword := range keywords {
 					if strings.Contains(cellValue, keyword) {
 						columnsToCopy[colIndex] = true
@@ -67,49 +73,58 @@ func combineExcelFiles(inputDir string, outputFile string, keywords []string, ke
 				}
 			}
 
-			if !headerWritten {
-				// Write header row
-				headerRow := inSheet.Rows[keywordRow-1] // Set headerRow to the keyword row
-				newHeaderRow := outSheet.AddRow()
-				for _, colIndex := range keywordOrder {
-					newCell := newHeaderRow.AddCell()
-					if colIndex < len(headerRow.Cells) {
-						newCell.SetValue(headerRow.Cells[colIndex].String())
-					}
-				}
-				headerWritten = true
-			}
-
 			// Copy relevant rows
-			for i := keywordRow; i < len(inSheet.Rows); i++ {
-				row := inSheet.Rows[i]
+			for i := keywordRow; i < len(rows); i++ {
+				row := rows[i]
 
 				// Skip empty rows
 				if isEmptyRow(row) {
 					continue
 				}
 
-				newRow := outSheet.AddRow()
-				for _, colIndex := range keywordOrder {
-					if colIndex < len(row.Cells) {
-						newCell := newRow.AddCell()
-						newCell.SetValue(row.Cells[colIndex].String())
-					} else {
-						newRow.AddCell()
+				dataRow := make([]string, len(keywordOrder))
+				for j, colIndex := range keywordOrder {
+					if colIndex < len(row) {
+						dataRow[j] = row[colIndex]
 					}
 				}
+				dataRows = append(dataRows, dataRow)
 			}
 		}
 	}
 
+	if len(headerMap) == 0 {
+		return fmt.Errorf("no columns match the specified keywords")
+	}
+
+	// Write header row
+	headerRow := make([]string, len(keywordOrder))
+	for i, colIndex := range keywordOrder {
+		headerRow[i] = headerMap[colIndex]
+	}
+	for i, value := range headerRow {
+		colName, _ := excelize.ColumnNumberToName(i + 1) // Adjust index for 1-based column numbering
+		cellAddress := fmt.Sprintf("%s%d", colName, 1)   // Row 1 for header
+		outFile.SetCellValue(defaultSheetName, cellAddress, value)
+	}
+
+	// Write data rows
+	for rowIndex, row := range dataRows {
+		for colIndex, value := range row {
+			colName, _ := excelize.ColumnNumberToName(colIndex + 1) // Adjust index for 1-based column numbering
+			cellAddress := fmt.Sprintf("%s%d", colName, rowIndex+2) // Row numbers start from 2
+			outFile.SetCellValue(defaultSheetName, cellAddress, value)
+		}
+	}
+
 	// Save the combined output file
-	return outFile.Save(outputFile)
+	return outFile.SaveAs(outputFile)
 }
 
 // Helper function to check if a row is empty
-func isEmptyRow(row *xlsx.Row) bool {
-	for _, cell := range row.Cells {
-		if cell.String() != "" {
+func isEmptyRow(row []string) bool {
+	for _, cell := range row {
+		if cell != "" {
 			return false
 		}
 	}
@@ -123,8 +138,13 @@ func main() {
 	keywordRow := flag.Int("r", 5, "Row number where the keyword line is located")
 	flag.Parse()
 
+	binaryName := "combine-excel"
+	if runtime.GOOS == "windows" {
+		binaryName += ".exe"
+	}
+
 	if *inputDir == "" || *outputFile == "" || *keywords == "" {
-		fmt.Println("Usage: combine-excel -i <inputDir> -o <outputFile.xlsx> -k <keywords>")
+		fmt.Printf("Usage: %s -i <inputDir> -o <outputFile.xlsx> -k <keywords> -r <row_number>\n", binaryName)
 		os.Exit(1)
 	}
 
