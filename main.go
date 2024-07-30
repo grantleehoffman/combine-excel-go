@@ -65,9 +65,10 @@ func combineExcelFiles(inputDir string, outputFile string, keywords []string, ke
 		for colIndex, cellValue := range keywordRowCells {
 			for _, keyword := range keywords {
 				if containsKeyword(cellValue, keyword) {
+					normalizedCellValue := normalizeWhitespace(cellValue)
 					columnsToCopy[colIndex] = true
 					if _, exists := headerMap[colIndex]; !exists {
-						headerMap[colIndex] = cellValue
+						headerMap[colIndex] = normalizedCellValue
 						keywordOrder = append(keywordOrder, colIndex)
 					}
 				}
