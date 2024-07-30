@@ -26,6 +26,10 @@ func combineExcelFiles(inputDir string, outputFile string, keywords []string, ke
 	// Boolean to track if header row has been written
 	headerWritten := false
 
+	// Map to hold the column indices in order based on keywords
+	headerMap := make(map[int]string) // column index to header name
+	keywordOrder := []int{}           // order of columns to be copied
+
 	for _, file := range files {
 		if file.IsDir() {
 			continue
@@ -55,17 +59,23 @@ func combineExcelFiles(inputDir string, outputFile string, keywords []string, ke
 				for _, keyword := range keywords {
 					if strings.Contains(cellValue, keyword) {
 						columnsToCopy[colIndex] = true
+						if _, exists := headerMap[colIndex]; !exists {
+							headerMap[colIndex] = cellValue
+							keywordOrder = append(keywordOrder, colIndex)
+						}
 					}
 				}
 			}
 
 			if !headerWritten {
 				// Write header row
-				headerRow := inSheet.Rows[keywordRow-1]
+				headerRow := inSheet.Rows[keywordRow-1] // Set headerRow to the keyword row
 				newHeaderRow := outSheet.AddRow()
-				for colIndex := range columnsToCopy {
+				for _, colIndex := range keywordOrder {
 					newCell := newHeaderRow.AddCell()
-					newCell.SetValue(headerRow.Cells[colIndex].String())
+					if colIndex < len(headerRow.Cells) {
+						newCell.SetValue(headerRow.Cells[colIndex].String())
+					}
 				}
 				headerWritten = true
 			}
@@ -80,10 +90,12 @@ func combineExcelFiles(inputDir string, outputFile string, keywords []string, ke
 				}
 
 				newRow := outSheet.AddRow()
-				for colIndex := range columnsToCopy {
+				for _, colIndex := range keywordOrder {
 					if colIndex < len(row.Cells) {
 						newCell := newRow.AddCell()
 						newCell.SetValue(row.Cells[colIndex].String())
+					} else {
+						newRow.AddCell()
 					}
 				}
 			}
@@ -104,16 +116,6 @@ func isEmptyRow(row *xlsx.Row) bool {
 	return true
 }
 
-// Helper function to check if a value matches any of the keywords
-func containsKeyword(value string, keywords []string) bool {
-	for _, keyword := range keywords {
-		if value == keyword {
-			return true
-		}
-	}
-	return false
-}
-
 func main() {
 	inputDir := flag.String("i", "", "Directory containing input Excel files")
 	outputFile := flag.String("o", "", "Path to the output Excel file")
@@ -122,7 +124,7 @@ func main() {
 	flag.Parse()
 
 	if *inputDir == "" || *outputFile == "" || *keywords == "" {
-		fmt.Println("Usage: combine-excel -inputDir <inputDir> -outputFile <outputFile> -keywords <keywords>")
+		fmt.Println("Usage: combine-excel -i <inputDir> -o <outputFile.xlsx> -k <keywords>")
 		os.Exit(1)
 	}
 
